@@ -8,8 +8,7 @@
 #define MAX_LENGTH_TOPIC 30
 #define MAX_LENGTH_DATA 10
 
-#define TOPIC_ADD               "New_Devices/Name"
-#define TOPIC_DELETE            "Delete_Devices/Name"
+#define ADD_NODE_TOPIC          "ADD/NEW_NODE_NAME"
 #define DISCONNECT_PUB          "Status/Disconnected"
 
 #define KEEPALIVE 50

@@ -26,6 +26,13 @@
         "random": "cpp",
         "typeinfo": "c",
         "ratio": "c",
-        "esp_mesh_internal.h": "c"
+        "esp_mesh_internal.h": "c",
+        "bitset": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "*.tcc": "cpp",
+        "nvs_flash.h": "c",
+        "netfwd": "cpp",
+        "thread": "cpp"
     }
 }

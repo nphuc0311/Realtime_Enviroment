@@ -7,7 +7,7 @@
     "idf.openOcdConfigs": [
         "board/esp32-wrover-kit-3.3v.cfg"
     ],
-    "idf.portWin": "COM12",
+    "idf.portWin": "COM9",
     "idf.pythonBinPathWin": "C:\\Users\\phuc\\.espressif\\python_env\\idf5.0_py3.8_env\\Scripts\\python.exe",
     "idf.toolsPathWin": "C:\\Users\\phuc\\.espressif",
     "idf.flashType": "UART",
@@ -26,6 +26,8 @@
         "initializer_list": "c",
         "utility": "c",
         "chrono": "c",
-        "algorithm": "c"
+        "algorithm": "c",
+        "adc_cali.h": "c",
+        "adc_cali_scheme.h": "c"
     }
 }

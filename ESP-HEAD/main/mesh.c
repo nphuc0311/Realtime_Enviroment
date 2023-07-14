@@ -7,24 +7,28 @@
 #include "esp_mesh_internal.h"
 #include "nvs_flash.h"
 #include "MQTT.h"
-
+#include "wifi.h"
 #include "mesh.h"
 
 #define TAG "MESH"
 
 extern MQTT_Handler_Struct *mqtt_t;
+extern int count;
+extern mesh_config confg;
+extern wf_cfg wifi;
     
 static uint8_t rx_buf[RX_SIZE] = {0, };
 static const char *MESH_TAG = "mesh_main";
 static const uint8_t MESH_ID[6] = {0x77, 0x77, 0x77, 0x11, 0x12, 0x11};
 static mesh_addr_t mesh_parent_addr;
 static int mesh_layer = -1;
-static esp_netif_t *netif_sta = NULL;
+extern esp_netif_t *netif_sta;
 // static mesh_addr_t route_table[6];
 // static int route_table_size = 0;
 extern esp_name *name_devices;
 static bool has_child = true;
 static int route_table_size = 0;
+extern MQTT_Handler_Struct mqtt_h;
 
 
 // void sending_data()
@@ -65,14 +69,15 @@ void esp_mesh_p2p_rx_main()
                         char dt[100];
                         sprintf(t, ""MACSTR"", MAC2STR(route_table[i].addr));
                         sprintf(dt, "%s", data.data);
-                        for (int j=0; j<10; j++)
+                        for (int j=0; j<NUMBER_OF_DEVICES; j++)
                         {
-                            if (strcmp(name_devices[j].addr, t)==0)
+                            if (strcmp(name_devices[j].addr, t)==0) {
                                 mqtt_client_publish(mqtt_t, name_devices[j].name, dt);
+                                sprintf(dt, "%d", '\0');
+                            }
                         }
                     }
                 }
-                vTaskDelay(10 * 1000 / portTICK_PERIOD_MS);
             }
             else break;
         }
@@ -108,7 +113,7 @@ void mesh_scan_done_handler(int num)
                      record.ssid, MAC2STR(record.bssid), record.primary,
                      record.rssi);
 
-            if (!strcmp(MESH_ROUTER_SSID, (char *) record.ssid)) {
+            if (!strcmp(wifi.ssid, (char *) record.ssid)) {
                 parent_found = true;
                 memcpy(&parent_record, &record, sizeof(record));
                 my_type = MESH_ROOT;
@@ -129,8 +134,8 @@ void mesh_scan_done_handler(int num)
         memcpy(&parent.sta.bssid, parent_record.bssid, 6);
         if (my_type == MESH_ROOT) {
             if (parent_record.authmode != WIFI_AUTH_OPEN) {
-                memcpy(&parent.sta.password, MESH_ROUTER_PASSWD,
-                       strlen(MESH_ROUTER_PASSWD));
+                memcpy(&parent.sta.password, wifi.password,
+                       strlen(wifi.password));
             }
             ESP_LOGW(MESH_TAG, "<PARENT>%s, "MACSTR", channel:%u, rssi:%d",
                      parent_record.ssid, MAC2STR(parent_record.bssid),
@@ -185,20 +190,31 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
         mesh_layer = esp_mesh_get_layer();
     }
     break;
-    case MESH_EVENT_CHILD_CONNECTED: {
+    case MESH_EVENT_CHILD_CONNECTED: { 
         mesh_event_child_connected_t *child_connected = (mesh_event_child_connected_t *)event_data;
         ESP_LOGI(MESH_TAG, "<MESH_EVENT_CHILD_CONNECTED>aid:%d, "MACSTR"",
                  child_connected->aid,
                  MAC2STR(child_connected->mac));
+
+        bool exist = false;
+        char mac[18];
+        sprintf(mac, ""MACSTR"", MAC2STR(child_connected->mac));
+
         if (has_child == true) {
-            name_devices = (esp_name*)malloc(10 * sizeof(esp_name));
-            
-            sprintf(name_devices[0].name, "%s", "Apple");
-            sprintf(name_devices[0].addr, "%s", "40:22:d8:4f:5e:78");
-            sprintf(name_devices[1].name, "%s", "Banana");
-            sprintf(name_devices[1].addr, "%s", "e0:5a:1b:a1:93:58");
-            xTaskCreate(esp_mesh_p2p_rx_main, "MPRX", 3072, NULL, 5, NULL);
+            xTaskCreate(esp_mesh_p2p_rx_main, "MPRX", 8096, NULL, 5, NULL);
             has_child = false;
+        }
+
+        for (int j=0; j<NUMBER_OF_DEVICES; j++) {
+            if (strcmp(name_devices[j].addr, mac)==0)
+                exist = true;
+        }
+        
+        if (exist!=true) {
+            count += 1;
+            sprintf(name_devices[count-1].name, "%s", confg.name);
+            sprintf(name_devices[count-1].addr, "%s", mac);
+            // printf("%s", name_devices[count-1].name);
         }
     }
     break;
@@ -247,8 +263,9 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
             esp_netif_dhcpc_stop(netif_sta);
             esp_netif_dhcpc_start(netif_sta);
 
-            mqtt_client_subscribe(mqtt_t, TOPIC_ADD);
+            // mqtt_client_subscribe(mqtt_t, TOPIC_ADD);
         }
+        // mqtt_init_start(&mqtt_h);
         // mqtt_app_start();
     }
     break;
@@ -306,34 +323,15 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-void ip_event_handler(void *arg, esp_event_base_t event_base,
-                      int32_t event_id, void *event_data)
-{
-    ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
-    ESP_LOGI(MESH_TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
-}
+// void ip_event_handler(void *arg, esp_event_base_t event_base,
+//                       int32_t event_id, void *event_data)
+// {
+//     ip_event_got_ip_t *event = (ip_event_got_ip_t *) event_data;
+//     ESP_LOGI(MESH_TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
+// }
 
 void mesh_init(void) {
-    ret = nvs_flash_init();
-    if (ret == ESP_ERR_NVS_NO_FREE_PAGES) {
-        ESP_ERROR_CHECK(nvs_flash_erase());
-        ret = nvs_flash_init();
-    }
-    ESP_ERROR_CHECK( ret );
-    /* tcpip initialization */
-    ESP_ERROR_CHECK(esp_netif_init());
-    /* event initialization */
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
-    /* crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
-    ESP_ERROR_CHECK(esp_netif_create_default_wifi_mesh_netifs(&netif_sta, NULL));
-    /* wifi initialization */
-    wifi_init_config_t config = WIFI_INIT_CONFIG_DEFAULT();
-    ESP_ERROR_CHECK(esp_wifi_init(&config));
-    ESP_ERROR_CHECK(esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, &ip_event_handler, NULL));
-    ESP_ERROR_CHECK(esp_wifi_set_storage(WIFI_STORAGE_FLASH));
-    ESP_ERROR_CHECK(esp_wifi_set_ps(WIFI_PS_NONE));
-    ESP_ERROR_CHECK(esp_wifi_start());
-    /* mesh initialization */
+
     ESP_ERROR_CHECK(esp_mesh_init());
     ESP_ERROR_CHECK(esp_event_handler_register(MESH_EVENT, ESP_EVENT_ANY_ID, &mesh_event_handler, NULL));
     /* mesh enable IE crypto */
@@ -365,6 +363,5 @@ void mesh_init(void) {
            strlen(MESH_AP_PASSWD));
     ESP_ERROR_CHECK(esp_mesh_set_config(&cfg));
     /* mesh start */
-    ESP_ERROR_CHECK(esp_mesh_start());
-    // ESP_LOGI(MESH_TAG, "mesh starts successfully, heap:%d\n",  esp_get_free_heap_size());
+    // ESP_ERROR_CHECK(esp_mesh_start());
 }

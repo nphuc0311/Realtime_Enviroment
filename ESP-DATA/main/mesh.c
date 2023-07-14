@@ -10,6 +10,7 @@
 #include "cJSON.h"
 
 #include "mesh.h"
+#include "mq2.h"
 
 #define TAG "MESH"
 
@@ -27,6 +28,13 @@ static uint8_t *bssid;
 static int d = -1;
 static uint8_t new_channel = MESH_CHANNEL;
 static uint8_t new_bssid;
+
+// extern struct dht11_reading last_read;
+
+// extern struct dht11_reading DHT11_read();
+
+// extern mq2_reading mq2_read();
+// extern dht11_reading DHT11_read();
 
 void mesh_scan_done_handler(int num)
 {
@@ -60,7 +68,8 @@ void mesh_scan_done_handler(int num)
 void esp_mesh_p2p_tx_main()
 {
     int temp;
-    int humi; 
+    int humi;
+    float gas;
     esp_err_t err;
     // int route_table_size = 0;
     mesh_data_t data;
@@ -73,31 +82,32 @@ void esp_mesh_p2p_tx_main()
     {
         temp = DHT11_read().temperature;
         humi = DHT11_read().humidity;
+        gas = mq2_read().percent;
         cJSON *root;
         root = cJSON_CreateObject();
-        if (DHT11_read().status != DHT11_OK) {    
-            cJSON_AddNumberToObject(root, "temp", -1);
-            cJSON_AddNumberToObject(root, "hum", -1);
-            cJSON_AddNumberToObject(root, "gas", -1);
-            cJSON_AddNumberToObject(root, "error", 1);
-        }
-        else {
-            cJSON_AddNumberToObject(root, "temp", temp);
-            cJSON_AddNumberToObject(root, "hum", humi);
-            cJSON_AddNumberToObject(root, "gas", -1);
-            cJSON_AddNumberToObject(root, "error", 0);
-        }
+        // printf("%d\n", DHT11_read().status);
+          
+            // cJSON_AddNumberToObject(root, "temp", -1);
+            // cJSON_AddNumberToObject(root, "hum", -1);
+            // cJSON_AddNumberToObject(root, "gas", -1);
+            // cJSON_AddNumberToObject(root, "error", 1);
+   
+        vTaskDelay(1.5 * 1000 / portTICK_PERIOD_MS);
+        cJSON_AddNumberToObject(root, "temp", temp);
+        cJSON_AddNumberToObject(root, "hum", humi);
+        cJSON_AddNumberToObject(root, "gas", gas);
+        cJSON_AddNumberToObject(root, "error", 0);
         
         char *rendered=cJSON_Print(root);
 
         memcpy(tx_buf, rendered, sizeof(int));
         strcpy((char*)tx_buf, rendered);
+
         err = esp_mesh_send(NULL, &data, 0, NULL, 0);
         if(err != ESP_OK) {
             printf("erros\n");
             vTaskDelete(NULL);
         }
-        vTaskDelay(10 * 1000 / portTICK_PERIOD_MS);
     }
     // vTaskDelete(NULL);
 }
@@ -184,7 +194,8 @@ void mesh_event_handler(void *arg, esp_event_base_t event_base,
             esp_netif_dhcpc_stop(netif_sta);
             esp_netif_dhcpc_start(netif_sta);
         }
-        xTaskCreate(esp_mesh_p2p_tx_main, "MPTX", 3072, NULL, 5, NULL);
+        xTaskCreate(esp_mesh_p2p_tx_main, "MPTX", 8096, NULL, 5, NULL);
+        // esp_mesh_p2p_tx_main();
     }
     break;
     case MESH_EVENT_PARENT_DISCONNECTED: {
@@ -257,12 +268,7 @@ void ip_event_handler(void *arg, esp_event_base_t event_base,
     ESP_LOGI(MESH_TAG, "<IP_EVENT_STA_GOT_IP>IP:" IPSTR, IP2STR(&event->ip_info.ip));
 }
 
-void mesh_init(void) {
-    ESP_ERROR_CHECK(nvs_flash_init());
-    /* tcpip initialization */
-    ESP_ERROR_CHECK(esp_netif_init());
-    /* event initialization */
-    ESP_ERROR_CHECK(esp_event_loop_create_default());
+void mesh_init() {
     /* crete network interfaces for mesh (only station instance saved for further manipulation, soft AP instance ignored */
     ESP_ERROR_CHECK(esp_netif_create_default_wifi_mesh_netifs(&netif_sta, NULL));
     /* wifi initialization */
