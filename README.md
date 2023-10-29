@@ -1,4 +1,4 @@
-# Mesh WiFi Sensor Network Project
+# Real-time Enviromental Monitoring
 
 ## Overview
 
